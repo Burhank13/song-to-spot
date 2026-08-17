@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Songs to Spotify</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Songs to Spotify</h1>
+        <p class="subtitle">Adds now playing songs to a playlist</p>
+      </header>
+
+      <section id="auth-section">
+        <button id="connect-btn" type="button">Connect Spotify</button>
+        <button id="disconnect-btn" type="button" class="secondary hidden">
+          Disconnect
+        </button>
+      </section>
+
+      <section id="playlist-section" class="hidden">
+        <label for="playlist-select">Target playlist</label>
+        <select id="playlist-select">
+          <option value="">Select a playlist…</option>
+        </select>
+        <button id="refresh-playlists-btn" type="button" class="secondary">
+          Refresh playlists
+        </button>
+      </section>
+
+      <section id="controls-section" class="hidden">
+        <label class="toggle">
+          <input id="enabled-toggle" type="checkbox" />
+          <span>Detect songs automatically</span>
+        </label>
+        <button id="send-now-btn" type="button" disabled>Confirm add to playlist</button>
+      </section>
+
+      <section id="status-section">
+        <h2>Now playing</h2>
+        <p id="track-title" class="muted">No track detected yet</p>
+        <p id="track-artist" class="muted"></p>
+        <p id="last-result" class="result"></p>
+      </section>
+
+      <p id="error" class="error hidden"></p>
+    </main>
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>
