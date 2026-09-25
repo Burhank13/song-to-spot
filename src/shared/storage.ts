@@ -7,7 +7,6 @@ export interface SpotifyTokens {
 }
 
 export interface AppSettings {
-  enabled: boolean;
   playlistId: string | null;
   playlistName: string | null;
 }
@@ -17,12 +16,11 @@ export interface StoredState {
   settings: AppSettings;
   lastSentKey: string | null;
   lastSentAt: number;
-  lastTrack: import("./track").TrackInfo | null;
+  lastTrack: TrackInfo | null;
   lastResult: string | null;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  enabled: true,
   playlistId: null,
   playlistName: null,
 };
@@ -55,22 +53,17 @@ export async function saveTokens(tokens: SpotifyTokens | null): Promise<void> {
   await chrome.storage.local.set({ spotifyTokens: tokens });
 }
 
-export async function saveDetectedTrack(track: TrackInfo): Promise<void> {
-  await chrome.storage.local.set({
-    lastTrack: track,
-    lastResult: "Detected track. Confirm add to playlist.",
-  });
-}
-
+// `sentKey` is only passed when the track was actually added, so a failed
+// attempt can be retried immediately without hitting the duplicate check.
 export async function saveLastAction(
-  track: import("./track").TrackInfo,
-  key: string,
-  result: string
+  track: TrackInfo | null,
+  result: string,
+  sentKey: string | null = null
 ): Promise<void> {
-  await chrome.storage.local.set({
-    lastTrack: track,
-    lastSentKey: key,
-    lastSentAt: Date.now(),
-    lastResult: result,
-  });
+  const update: Record<string, unknown> = { lastTrack: track, lastResult: result };
+  if (sentKey) {
+    update.lastSentKey = sentKey;
+    update.lastSentAt = Date.now();
+  }
+  await chrome.storage.local.set(update);
 }

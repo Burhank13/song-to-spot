@@ -1,59 +1,39 @@
 import { shouldSkipDuplicate, buildSearchQuery } from "./dedup";
+import { findNowPlaying } from "./now-playing";
 import type { TrackInfo } from "../shared/track";
-import { trackKey, isSpotifySource } from "../shared/track";
-import {
-  getStoredState,
-  saveDetectedTrack,
-  saveLastAction,
-  saveTokens,
-  type SpotifyTokens,
-} from "../shared/storage";
+import { trackKey } from "../shared/track";
+import { getStoredState, saveLastAction, saveTokens } from "../shared/storage";
 import { searchTrack, addTrackToPlaylist } from "../spotify/client";
 
-export async function processTrack(
-  track: TrackInfo,
-  force = false
-): Promise<string> {
-  if (!track.isPlaying) {
-    return "Skipped: media is not playing.";
-  }
+export interface SaveResult {
+  ok: boolean;
+  message: string;
+}
 
-  if (isSpotifySource(track.sourceHost)) {
-    return "Skipped: source is Spotify.";
-  }
-
+async function addTrack(track: TrackInfo): Promise<SaveResult> {
   const state = await getStoredState();
 
-  if (!state.settings.enabled && !force) {
-    return "Auto-send is disabled.";
-  }
-
   if (!state.spotifyTokens) {
-    return "Connect Spotify first.";
+    return { ok: false, message: "Connect Spotify first." };
   }
 
   if (!state.settings.playlistId) {
-    return "Choose a target playlist first.";
+    return { ok: false, message: "Choose a target playlist first." };
   }
 
   const key = trackKey(track);
-  if (
-    !force &&
-    shouldSkipDuplicate(key, state.lastSentKey, state.lastSentAt)
-  ) {
-    return "Already sent recently.";
+  if (shouldSkipDuplicate(key, state.lastSentKey, state.lastSentAt)) {
+    return { ok: false, message: `Already added: ${track.title}` };
   }
 
-  let tokens: SpotifyTokens = state.spotifyTokens;
   const query = buildSearchQuery(track.title, track.artist);
-  const { track: match, tokens: searchTokens } = await searchTrack(tokens, query);
-  tokens = searchTokens;
+  const { track: match, tokens } = await searchTrack(state.spotifyTokens, query);
+  await saveTokens(tokens);
 
   if (!match) {
     const message = `Not found on Spotify: ${track.title}`;
-    await saveLastAction(track, key, message);
-    await saveTokens(tokens);
-    return message;
+    await saveLastAction(track, message);
+    return { ok: false, message };
   }
 
   const { tokens: finalTokens } = await addTrackToPlaylist(
@@ -64,40 +44,39 @@ export async function processTrack(
   await saveTokens(finalTokens);
 
   const message = `Added "${match.name}" by ${match.artists.join(", ")}`;
-  await saveLastAction(track, key, message);
-
-  chrome.notifications.create({
-    type: "basic",
-    iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-    title: "Added to Spotify playlist",
-    message,
-  });
-
-  return message;
+  await saveLastAction(track, message, key);
+  return { ok: true, message };
 }
 
-export async function handleTrackUpdate(track: TrackInfo): Promise<void> {
-  const state = await getStoredState();
-  if (!state.settings.enabled) {
-    return;
-  }
-
-  if (!track.isPlaying || isSpotifySource(track.sourceHost)) {
-    return;
-  }
-
-  const currentKey = trackKey(track);
-  const previousKey = state.lastTrack ? trackKey(state.lastTrack) : null;
-  if (previousKey === currentKey) {
-    return;
-  }
-
-  await saveDetectedTrack(track);
-
+function notify(title: string, message: string): void {
   chrome.notifications.create({
     type: "basic",
     iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-    title: "Song detected",
-    message: `${track.title}${track.artist ? ` — ${track.artist}` : ""}. Open the extension to add it to your playlist.`,
+    title,
+    message,
   });
+}
+
+// Finds what's playing and adds it to the target playlist. The keyboard
+// shortcut passes `notify` because there is no popup open to show the result.
+export async function saveNowPlaying(
+  options: { notify: boolean }
+): Promise<SaveResult> {
+  let result: SaveResult;
+  try {
+    const found = await findNowPlaying();
+    result = found.track
+      ? await addTrack(found.track)
+      : { ok: false, message: found.reason };
+  } catch (error) {
+    result = {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  if (options.notify) {
+    notify(result.ok ? "Added to Spotify" : "Song not added", result.message);
+  }
+  return result;
 }

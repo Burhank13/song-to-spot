@@ -1,20 +1,16 @@
-import type { Message, BackgroundResponse, StatusResponse } from "../shared/messages";
-import {
-  getStoredState,
-  saveSettings,
-  saveTokens,
-  DEFAULT_SETTINGS,
-} from "../shared/storage";
+import type { Message, StatusResponse } from "../shared/messages";
+import { getStoredState, saveSettings, saveTokens } from "../shared/storage";
 import { authenticateSpotify, getOAuthRedirectUriForSetup } from "../spotify/auth";
 import { fetchUserPlaylists } from "../spotify/client";
-import { handleTrackUpdate, processTrack } from "./pipeline";
-import { isTrackUpdate } from "../shared/messages";
+import { findNowPlaying } from "./now-playing";
+import { saveNowPlaying } from "./pipeline";
+
+const SAVE_COMMAND = "save-now-playing";
 
 async function getStatus(): Promise<StatusResponse> {
   const state = await getStoredState();
   return {
     connected: Boolean(state.spotifyTokens),
-    enabled: state.settings.enabled,
     playlistId: state.settings.playlistId,
     playlistName: state.settings.playlistName,
     lastTrack: state.lastTrack,
@@ -22,35 +18,35 @@ async function getStatus(): Promise<StatusResponse> {
   };
 }
 
+chrome.commands.onCommand.addListener((command) => {
+  if (command === SAVE_COMMAND) {
+    void saveNowPlaying({ notify: true });
+  }
+});
+
 chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
   void (async () => {
     try {
-      if (isTrackUpdate(message)) {
-        await handleTrackUpdate(message.track);
-        sendResponse({ ok: true } satisfies BackgroundResponse);
-        return;
-      }
-
       switch (message.type) {
         case "GET_STATUS": {
           sendResponse(await getStatus());
           return;
         }
-        case "TOGGLE_ENABLED": {
-          const state = await getStoredState();
-          const settings = { ...state.settings, enabled: message.enabled };
-          await saveSettings(settings);
-          sendResponse(await getStatus());
+        case "GET_NOW_PLAYING": {
+          const found = await findNowPlaying();
+          sendResponse({
+            nowPlaying: found.track,
+            reason: found.track ? null : found.reason,
+          });
           return;
         }
-        case "SEND_NOW": {
-          const state = await getStoredState();
-          if (!state.lastTrack) {
-            sendResponse({ ok: false, error: "No track detected yet." });
-            return;
-          }
-          const result = await processTrack(state.lastTrack, true);
-          sendResponse({ ok: true, message: result });
+        case "SAVE_NOW_PLAYING": {
+          const result = await saveNowPlaying({ notify: false });
+          sendResponse(
+            result.ok
+              ? { ok: true, message: result.message }
+              : { ok: false, error: result.message }
+          );
           return;
         }
         case "AUTH_SPOTIFY": {

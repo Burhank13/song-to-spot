@@ -70,18 +70,6 @@ select {
   margin-bottom: 8px;
 }
 
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  color: #fff;
-}
-
-.toggle input {
-  width: auto;
-}
-
 #status-section h2 {
   margin: 0 0 8px;
   font-size: 14px;
@@ -102,6 +90,20 @@ select {
 #track-artist {
   margin: 4px 0 0;
   font-size: 13px;
+}
+
+#save-btn {
+  margin-top: 12px;
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #b3b3b3;
+}
+
+.hint a {
+  color: #fff;
 }
 
 .result {

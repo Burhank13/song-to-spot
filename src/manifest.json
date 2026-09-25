@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApE4lB5p1Cfuz5vEKq+TrxHGBDvCYqAKBRf0AHgry7Vxu2wNCdQySQCQYgirqMc6ZEowEoiM/qdWM5RhlTV++u/RgE5lrd6t6TXrZGI6CXT6aD1NnS4Z/AVz5R/D4qIkvH/b1uAkG0kQJL3gE6qaRcwrk8LMt7JPQwVWFPvhMeT0UdKm6Y/AeJJS2thRtouNml6T0uR29b8AKlJMOsxeS/2yhULfn7lwwGTqPARb4+mjGjkXXMG33yoDmMl4xWWoECOlbLfx+sVKvrQ6vdVbTcXovfTZFRNxZ7HwEl6JHnYhpdw7kPORBckgiIQMZBb4XCq0s4f4fT/3thql23Q/diQIDAQAB",
   "name": "Songs to Spotify",
-  "description": "Detects songs playing in any browser tab and adds them to a Spotify playlist.",
+  "description": "Press a shortcut to save the song playing in any browser tab to a Spotify playlist.",
   "version": "0.1.0",
   "permissions": [
     "storage",
@@ -44,5 +44,14 @@
       "run_at": "document_idle",
       "all_frames": false
     }
-  ]
+  ],
+  "commands": {
+    "save-now-playing": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Save the song that is playing to your Spotify playlist"
+    }
+  }
 }

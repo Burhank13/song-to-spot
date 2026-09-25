@@ -1,19 +1,36 @@
 import type { TrackInfo } from "../shared/track";
 import { isSpotifySource } from "../shared/track";
+import type { ContentMessage, ContentResponse } from "../shared/messages";
 
-const POLL_INTERVAL_MS = 2000;
+function hasPlayingMediaElement(): boolean {
+  const mediaElements = document.querySelectorAll("video, audio");
+  for (const element of Array.from(mediaElements)) {
+    if (element instanceof HTMLMediaElement && !element.paused && !element.ended) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// `audible` comes from Chrome's tab state. Some players never set
+// playbackState or play through detached <audio> elements, so the tab
+// making sound is the most reliable "is playing" signal we have.
+function isPlaying(audible: boolean): boolean {
+  if (!("mediaSession" in navigator) || !navigator.mediaSession) {
+    return audible || hasPlayingMediaElement();
+  }
+  const state = navigator.mediaSession.playbackState;
+  if (state === "playing") {
+    return true;
+  }
+  if (state === "paused") {
+    return false;
+  }
+  return audible || hasPlayingMediaElement();
+}
 
 function readFromMediaSession(): TrackInfo | null {
-  if (!("mediaSession" in navigator) || !navigator.mediaSession) {
-    return null;
-  }
-
-  const session = navigator.mediaSession;
-  if (session.playbackState !== "playing") {
-    return null;
-  }
-
-  const metadata = session.metadata;
+  const metadata = navigator.mediaSession?.metadata;
   if (!metadata?.title?.trim()) {
     return null;
   }
@@ -28,54 +45,21 @@ function readFromMediaSession(): TrackInfo | null {
   };
 }
 
-function hasPlayingMediaElement(): boolean {
-  const mediaElements = document.querySelectorAll("video, audio");
-  for (const element of Array.from(mediaElements)) {
-    if (element instanceof HTMLMediaElement && !element.paused && !element.ended) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function readFromPageFallback(): TrackInfo | null {
-  if (!hasPlayingMediaElement()) {
-    return null;
-  }
-
-  const titleFromPage = document.title.trim();
-  if (!titleFromPage) {
-    return null;
-  }
-
-  const cleanedTitle = titleFromPage
+function readFromPageTitle(): TrackInfo | null {
+  const title = document.title
+    .replace(/^\(\d+\)\s*/, "")
     .replace(/\s*[-|–—]\s*YouTube$/i, "")
     .replace(/\s*[-|–—]\s*SoundCloud$/i, "")
     .replace(/\s*on\s+SoundCloud$/i, "")
     .trim();
 
-  if (!cleanedTitle) {
+  if (!title) {
     return null;
-  }
-
-  let artist = "";
-  let title = cleanedTitle;
-
-  const separators = [" - ", " – ", " — ", " | "];
-  for (const sep of separators) {
-    if (cleanedTitle.includes(sep)) {
-      const [left, right] = cleanedTitle.split(sep, 2);
-      if (left && right) {
-        artist = left.trim();
-        title = right.trim();
-        break;
-      }
-    }
   }
 
   return {
     title,
-    artist,
+    artist: "",
     album: "",
     isPlaying: true,
     sourceUrl: location.href,
@@ -83,58 +67,25 @@ function readFromPageFallback(): TrackInfo | null {
   };
 }
 
-function detectCurrentTrack(): TrackInfo | null {
-  if (isSpotifySource(location.hostname)) {
-    return null;
+// During YouTube ads the Media Session metadata describes the ad, not the
+// video, so reading it would search Spotify for the advertiser.
+function isAdPlaying(): boolean {
+  return document.querySelector(".html5-video-player.ad-showing") !== null;
+}
+
+function detectCurrentTrack(audible: boolean): ContentResponse {
+  if (isSpotifySource(location.hostname) || !isPlaying(audible)) {
+    return { track: null };
+  }
+  if (isAdPlaying()) {
+    return { track: null, reason: "An ad is playing. Try again when the song starts." };
   }
 
-  return readFromMediaSession() ?? readFromPageFallback();
+  return { track: readFromMediaSession() ?? readFromPageTitle() };
 }
 
-let lastSentKey = "";
-
-function publishTrack(track: TrackInfo | null): void {
-  if (!track) {
-    return;
+chrome.runtime.onMessage.addListener((message: ContentMessage, _sender, sendResponse) => {
+  if (message?.type === "READ_NOW_PLAYING") {
+    sendResponse(detectCurrentTrack(message.audible));
   }
-
-  const key = `${track.title}::${track.artist}::${track.sourceUrl}`;
-  if (key === lastSentKey) {
-    return;
-  }
-  lastSentKey = key;
-
-  chrome.runtime.sendMessage({ type: "TRACK_UPDATE", track }).catch(() => {
-    // Extension context may be unavailable during reload.
-  });
-}
-
-function tick(): void {
-  publishTrack(detectCurrentTrack());
-}
-
-function attachMediaListeners(): void {
-  document.addEventListener(
-    "play",
-    (event) => {
-      if (event.target instanceof HTMLMediaElement) {
-        setTimeout(tick, 300);
-      }
-    },
-    true
-  );
-
-  document.addEventListener(
-    "pause",
-    () => {
-      lastSentKey = "";
-    },
-    true
-  );
-
-  document.addEventListener("visibilitychange", tick);
-}
-
-attachMediaListeners();
-setInterval(tick, POLL_INTERVAL_MS);
-tick();
+});

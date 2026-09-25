@@ -1,9 +1,12 @@
 import type {
   BackgroundResponse,
   Message,
+  NowPlayingResponse,
   PlaylistsResponse,
   StatusResponse,
 } from "../shared/messages";
+
+const SAVE_COMMAND = "save-now-playing";
 
 function $<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -30,10 +33,6 @@ async function sendMessage<T extends BackgroundResponse>(
   return chrome.runtime.sendMessage(message) as Promise<T>;
 }
 
-function isStatusResponse(value: BackgroundResponse): value is StatusResponse {
-  return "connected" in value;
-}
-
 function isPlaylistsResponse(value: BackgroundResponse): value is PlaylistsResponse {
   return "playlists" in value;
 }
@@ -42,6 +41,16 @@ function isErrorResponse(
   value: BackgroundResponse
 ): value is { ok: false; error: string } {
   return "ok" in value && value.ok === false;
+}
+
+let status: StatusResponse | null = null;
+let hasNowPlaying = false;
+let playlistsLoaded = false;
+
+function updateSaveButton(): void {
+  const saveBtn = $<HTMLButtonElement>("save-btn");
+  saveBtn.classList.toggle("hidden", !status?.connected);
+  saveBtn.disabled = !(status?.connected && status.playlistId && hasNowPlaying);
 }
 
 async function loadPlaylists(selectedId: string | null): Promise<void> {
@@ -69,33 +78,53 @@ async function loadPlaylists(selectedId: string | null): Promise<void> {
 
 async function refreshStatus(): Promise<void> {
   showError("");
-  const status = await sendMessage<StatusResponse>({ type: "GET_STATUS" });
+  status = await sendMessage<StatusResponse>({ type: "GET_STATUS" });
 
   $("connect-btn").classList.toggle("hidden", status.connected);
   $("disconnect-btn").classList.toggle("hidden", !status.connected);
   $("playlist-section").classList.toggle("hidden", !status.connected);
-  $("controls-section").classList.toggle("hidden", !status.connected);
+  $("last-result").textContent = status.lastResult ?? "";
+  updateSaveButton();
 
-  const enabledToggle = $<HTMLInputElement>("enabled-toggle");
-  enabledToggle.checked = status.enabled;
+  // The playlist list only changes on connect or an explicit refresh, so
+  // don't refetch it on every storage change (e.g. after each save).
+  if (status.connected && !playlistsLoaded) {
+    playlistsLoaded = true;
+    await loadPlaylists(status.playlistId);
+  } else if (!status.connected) {
+    playlistsLoaded = false;
+  }
+}
 
-  const sendNowBtn = $("send-now-btn") as HTMLButtonElement;
-  const canConfirm = Boolean(status.connected && status.lastTrack && status.playlistId);
+async function refreshNowPlaying(): Promise<void> {
+  const response = await sendMessage<NowPlayingResponse>({ type: "GET_NOW_PLAYING" });
+  const track = response.nowPlaying;
+  hasNowPlaying = Boolean(track);
 
-  if (status.lastTrack) {
-    $("track-title").textContent = status.lastTrack.title;
-    $("track-artist").textContent = status.lastTrack.artist || "Unknown artist";
+  if (track) {
+    $("track-title").textContent = track.title;
+    $("track-artist").textContent = track.artist || "Unknown artist";
   } else {
-    $("track-title").textContent = "No track detected yet";
+    $("track-title").textContent = response.reason ?? "Nothing is playing.";
     $("track-artist").textContent = "";
   }
+  updateSaveButton();
+}
 
-  sendNowBtn.disabled = !canConfirm;
-  $("last-result").textContent = status.lastResult ?? "";
+async function showShortcut(): Promise<void> {
+  const hint = $("shortcut-hint");
+  const commands = await chrome.commands.getAll();
+  const shortcut = commands.find((c) => c.name === SAVE_COMMAND)?.shortcut;
 
-  if (status.connected) {
-    await loadPlaylists(status.playlistId);
-  }
+  hint.textContent = shortcut ? `Shortcut: ${shortcut} · ` : "No shortcut set · ";
+  const link = document.createElement("a");
+  link.href = "#";
+  link.textContent = shortcut ? "change" : "set one";
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    void chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+  });
+  hint.appendChild(link);
 }
 
 async function init(): Promise<void> {
@@ -106,9 +135,7 @@ async function init(): Promise<void> {
       showError(response.error);
       return;
     }
-    if (isStatusResponse(response)) {
-      await refreshStatus();
-    }
+    await refreshStatus();
   });
 
   $("disconnect-btn").addEventListener("click", async () => {
@@ -117,8 +144,7 @@ async function init(): Promise<void> {
   });
 
   $("refresh-playlists-btn").addEventListener("click", async () => {
-    const status = await sendMessage<StatusResponse>({ type: "GET_STATUS" });
-    await loadPlaylists(status.playlistId);
+    await loadPlaylists(status?.playlistId ?? null);
   });
 
   $<HTMLSelectElement>("playlist-select").addEventListener("change", async (event) => {
@@ -135,34 +161,24 @@ async function init(): Promise<void> {
     await refreshStatus();
   });
 
-  $<HTMLInputElement>("enabled-toggle").addEventListener("change", async (event) => {
-    const input = event.target as HTMLInputElement;
-    await sendMessage({ type: "TOGGLE_ENABLED", enabled: input.checked });
-  });
-
-  $("send-now-btn").addEventListener("click", async () => {
+  $("save-btn").addEventListener("click", async () => {
     showError("");
-    const response = await sendMessage<BackgroundResponse>({ type: "SEND_NOW" });
+    const saveBtn = $<HTMLButtonElement>("save-btn");
+    saveBtn.disabled = true;
+    const response = await sendMessage<BackgroundResponse>({ type: "SAVE_NOW_PLAYING" });
     if (isErrorResponse(response)) {
       showError(response.error);
-      return;
     }
     await refreshStatus();
   });
 
   chrome.storage.onChanged.addListener((changes) => {
-    if (
-      changes.lastTrack ||
-      changes.spotifyTokens ||
-      changes.settings ||
-      changes.playlistId ||
-      changes.playlistName
-    ) {
+    if (changes.lastResult || changes.spotifyTokens) {
       void refreshStatus();
     }
   });
 
-  await refreshStatus();
+  await Promise.all([refreshStatus(), refreshNowPlaying(), showShortcut()]);
 }
 
 void init();
