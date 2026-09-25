@@ -98,6 +98,6 @@ export async function handleTrackUpdate(track: TrackInfo): Promise<void> {
     type: "basic",
     iconUrl: chrome.runtime.getURL("icons/icon128.png"),
     title: "Song detected",
-    message: `${track.title}${track.artist ? ` — ${track.artist}` : ""}. Open the extension to add it to your playlist.",
+    message: `${track.title}${track.artist ? ` — ${track.artist}` : ""}. Open the extension to add it to your playlist.`,
   });
 }

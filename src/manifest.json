@@ -1,10 +1,15 @@
 {
   "manifest_version": 3,
-  "key": "MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC7xKH2UvXCrY8kID/YD02UQWEdOaaKKMNmr1Ayoeau3zYVAAmOkQLNA0tdFTa5timqIbQOfB9kkz4cgTHmsYw05l+ktviMi8aD6LnXSVBqluTUH7lxTZq4vB0ROOUTVxEiByq39iJdUNRO0+m9ivooVshYIvRD/GvM29JWpHLut1ljvsejfPCVkCgHmBy2wz+dt7ohgQWJGvB7I/87d6UgKph3IJimbP+/5Qdtd6F5eCaquveXLQUKiwlQIarX9ZTu9p3GsFzWIieOuhxzoplG3pG2AgOIuYNTQemlFfkwBKwrH83ejdRTEecUu/9QkW9OZsRe07jlzuh6fVo5zH/ZAgMBAAECggEAGzbADJ3wfaM/BEriRfPN2CdzpmJH621GCMtu8a+yafTy9y82s2GECOep1Bdfg6IJvt08pf7KY/7NOT9mVpu0CPS8tvhH5MLbZkHkMXYwQAqXpsDkVS4ctxqYkebvmJJ9arOkNt5nE6RD6RrgnTaX1CHjzpZeVb4vd5UCkskp2Twcv3CdxCcU9Pii7kamcUOjd67D+8QnjwZlvhIH5uKTQjvrzSoryJOADERX1aSITXgW/qKLnHzAHKLvlSk2YxaLwKrKrKYJ2OnXIO29sfVMlXNgajV+F+/dTBbcn+KVKMavlKGpyJ8ofWZI6gi6/AL4ltb2tZQO6aD5P4ADbprK4wKBgQDz+14rdUYbM6qnbwwEtltm3R7sZ/b0lmfaOWcrIB+3blNRtJTifFxCurRYFGfBoiCW7z7Ni3Wx51yiWyrFPF9l0rRDKET25XMZU3F0/8DqSETWpyiQUuAsJot5JWGABzfPks0mLGBVM0TK6UfxIJrC7yTTiNSSg/SNjsLJVAyGNwKBgQDFBGdsXHC5ADwZvMSecEeXw2g0kkDsmVRDkDafqUV2d0G4jCGT1bL72c0ON86qmSP9kVFwdLyhrXEZ/nGGhx5javF59xWqSnDuU7uBT40KdiwmJeHPdEUkBY+mee6GoCH6kfSp3xSoW9CowRksjikjNPgUGdqJUQ06y5GFQE0ibwKBgFrMo+E8hdi9w7cIRsrCKwX/KPEGSAwCpae7UT/ldqhHcM6pi/c2HQfggBl/jpWrhsFlTFQmoKiS2BC8KRC6RS6Z2ehcZj4Ual90hHbsb5lBSA0yrI/5p+AGgEWXuc9x4D1p/ttEDJ3otKNnahS885u0cFohRCs63JqKFMfkdbzFAoGAIGUQ/GhWwJShTToUuliL7RBcWgiSVFUB3foggTA8E7aYP9gKzVweCftOFEBo4vQ7Tr5OPcd0HMGAD14fHJerD33OJtfR4CZNW2K5OhHyhv3XVI52Cr57f+jKLf1ukwRRkfnd2PCtXOF79cOKeCEH8poLEIMPw/Rn0HsYemiQRlECgYARLJ57RWk2LTeiboreW2djBtQgm4HyJTWr+UpZ+ZpRCYWvoGiym9yQILmyOqYa8q4hKuU82HAun+8BXlVNQMU2X8RfrYH6Vgo9ZpRf3lPOjsJoKE0Q2Oh7V8/Lc2f3XkM3at/lgdZM+6zeJ7cHHwVqDPz+UJ6j1uP1DJ635PDf4g==",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApE4lB5p1Cfuz5vEKq+TrxHGBDvCYqAKBRf0AHgry7Vxu2wNCdQySQCQYgirqMc6ZEowEoiM/qdWM5RhlTV++u/RgE5lrd6t6TXrZGI6CXT6aD1NnS4Z/AVz5R/D4qIkvH/b1uAkG0kQJL3gE6qaRcwrk8LMt7JPQwVWFPvhMeT0UdKm6Y/AeJJS2thRtouNml6T0uR29b8AKlJMOsxeS/2yhULfn7lwwGTqPARb4+mjGjkXXMG33yoDmMl4xWWoECOlbLfx+sVKvrQ6vdVbTcXovfTZFRNxZ7HwEl6JHnYhpdw7kPORBckgiIQMZBb4XCq0s4f4fT/3thql23Q/diQIDAQAB",
   "name": "Songs to Spotify",
   "description": "Detects songs playing in any browser tab and adds them to a Spotify playlist.",
   "version": "0.1.0",
-  "permissions": ["storage", "identity", "notifications", "tabs"],
+  "permissions": [
+    "storage",
+    "identity",
+    "notifications",
+    "tabs"
+  ],
   "host_permissions": [
     "<all_urls>",
     "https://api.spotify.com/*",
@@ -30,8 +35,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/content/detector.ts"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content/detector.ts"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }

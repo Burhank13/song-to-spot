@@ -135,7 +135,7 @@ export async function addTrackToPlaylist(
 ): Promise<{ tokens: SpotifyTokens }> {
   const { tokens: updatedTokens } = await spotifyFetch(
     tokens,
-    `/playlists/${playlistId}/tracks`,
+    `/playlists/${playlistId}/items`,
     {
       method: "POST",
       body: JSON.stringify({ uris: [trackUri] }),
