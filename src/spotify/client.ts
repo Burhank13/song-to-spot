@@ -1,146 +1,136 @@
 import type { SpotifyTokens } from "../shared/storage";
 import { getValidAccessToken } from "./auth";
+import type { Candidate } from "./match";
+
+const API_BASE = "https://api.spotify.com/v1";
 
 export interface SpotifyPlaylist {
   id: string;
   name: string;
 }
 
-export interface SpotifyTrackMatch {
-  id: string;
+interface ApiTrack {
   uri: string;
   name: string;
-  artists: string[];
+  artists: Array<{ name: string }>;
+  album?: { name: string; images?: Array<{ url: string; width: number | null }> };
 }
 
-async function spotifyFetch(
-  tokens: SpotifyTokens,
-  path: string,
-  init: RequestInit = {}
-): Promise<{ data: unknown; tokens: SpotifyTokens }> {
-  let { accessToken, tokens: currentTokens } = await getValidAccessToken(tokens);
-
-  let response = await fetch(`https://api.spotify.com/v1${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      ...init.headers,
-    },
-  });
-
-  if (response.status === 401) {
-    const refreshed = await getValidAccessToken({
-      ...currentTokens,
-      expiresAt: 0,
-    });
-    currentTokens = refreshed.tokens;
-    accessToken = refreshed.accessToken;
-
-    response = await fetch(`https://api.spotify.com/v1${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        ...init.headers,
-      },
-    });
-  }
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Spotify API error (${response.status}): ${text}`);
-  }
-
-  const data =
-    response.status === 204 ? null : await response.json();
-  return { data, tokens: currentTokens };
-}
-
-export async function fetchUserPlaylists(
-  tokens: SpotifyTokens
-): Promise<{ playlists: SpotifyPlaylist[]; tokens: SpotifyTokens }> {
-  const playlists: SpotifyPlaylist[] = [];
-  let nextUrl: string | null = "/me/playlists?limit=50";
-  let currentTokens = tokens;
-
-  while (nextUrl) {
-    const path = nextUrl.startsWith("http")
-      ? nextUrl.replace("https://api.spotify.com/v1", "")
-      : nextUrl;
-
-    const { data, tokens: updatedTokens } = await spotifyFetch(currentTokens, path);
-    currentTokens = updatedTokens;
-
-    const page = data as {
-      items: Array<{ id: string; name: string }>;
-      next: string | null;
-    };
-
-    for (const item of page.items) {
-      playlists.push({ id: item.id, name: item.name });
-    }
-    nextUrl = page.next;
-  }
-
-  return { playlists, tokens: currentTokens };
-}
-
-export async function searchTrack(
-  tokens: SpotifyTokens,
-  query: string
-): Promise<{ track: SpotifyTrackMatch | null; tokens: SpotifyTokens }> {
-  const params = new URLSearchParams({
-    q: query,
-    type: "track",
-    limit: "3",
-  });
-
-  const { data, tokens: updatedTokens } = await spotifyFetch(
-    tokens,
-    `/search?${params.toString()}`
-  );
-
-  const results = data as {
-    tracks: {
-      items: Array<{
-        id: string;
-        uri: string;
-        name: string;
-        artists: Array<{ name: string }>;
-      }>;
-    };
-  };
-
-  const first = results.tracks.items[0];
-  if (!first) {
-    return { track: null, tokens: updatedTokens };
-  }
-
+function toCandidate(track: ApiTrack): Candidate {
+  const images = track.album?.images ?? [];
+  // Smallest image is plenty for a 40px thumbnail.
+  const image = [...images].sort((a, b) => (a.width ?? 0) - (b.width ?? 0))[0];
   return {
-    track: {
-      id: first.id,
-      uri: first.uri,
-      name: first.name,
-      artists: first.artists.map((a) => a.name),
-    },
-    tokens: updatedTokens,
+    uri: track.uri,
+    name: track.name,
+    artists: track.artists.map((a) => a.name),
+    album: track.album?.name ?? "",
+    imageUrl: image?.url ?? null,
   };
 }
 
-export async function addTrackToPlaylist(
-  tokens: SpotifyTokens,
-  playlistId: string,
-  trackUri: string
-): Promise<{ tokens: SpotifyTokens }> {
-  const { tokens: updatedTokens } = await spotifyFetch(
-    tokens,
-    `/playlists/${playlistId}/items`,
-    {
-      method: "POST",
-      body: JSON.stringify({ uris: [trackUri] }),
-    }
-  );
+// Wraps the Web API for one batch of calls. Tokens may be refreshed along the
+// way; callers persist `api.tokens` afterwards (see withSpotify).
+export class SpotifyApi {
+  constructor(public tokens: SpotifyTokens) {}
 
-  return { tokens: updatedTokens };
+  private async request<T>(pathOrUrl: string, init: RequestInit = {}): Promise<T> {
+    const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API_BASE}${pathOrUrl}`;
+
+    const send = async () => {
+      const { accessToken, tokens } = await getValidAccessToken(this.tokens);
+      this.tokens = tokens;
+      return fetch(url, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          ...init.headers,
+        },
+      });
+    };
+
+    let response = await send();
+    if (response.status === 401) {
+      this.tokens = { ...this.tokens, expiresAt: 0 };
+      response = await send();
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Spotify API error (${response.status}): ${text}`);
+    }
+
+    return (response.status === 204 ? null : await response.json()) as T;
+  }
+
+  // Only playlists the user can add to: their own and collaborative ones.
+  async playlists(): Promise<SpotifyPlaylist[]> {
+    const me = await this.request<{ id: string }>("/me");
+    const playlists: SpotifyPlaylist[] = [];
+    let next: string | null = "/me/playlists?limit=50";
+
+    while (next) {
+      const page: {
+        items: Array<{ id: string; name: string; collaborative: boolean; owner: { id: string } }>;
+        next: string | null;
+      } = await this.request(next);
+      for (const item of page.items) {
+        if (item.owner.id === me.id || item.collaborative) {
+          playlists.push({ id: item.id, name: item.name });
+        }
+      }
+      next = page.next;
+    }
+    return playlists;
+  }
+
+  async search(query: string, limit = 10): Promise<Candidate[]> {
+    const params = new URLSearchParams({ q: query, type: "track", limit: String(limit) });
+    const data = await this.request<{ tracks: { items: ApiTrack[] } }>(
+      `/search?${params.toString()}`
+    );
+    return data.tracks.items.map(toCandidate);
+  }
+
+  async playlistSnapshot(playlistId: string): Promise<string> {
+    const data = await this.request<{ snapshot_id: string }>(
+      `/playlists/${playlistId}?fields=snapshot_id`
+    );
+    return data.snapshot_id;
+  }
+
+  async playlistUris(playlistId: string): Promise<string[]> {
+    const uris: string[] = [];
+    const fields = encodeURIComponent("next,items(item(uri))");
+    let next: string | null = `/playlists/${playlistId}/items?limit=50&fields=${fields}`;
+
+    while (next) {
+      const page: { items: Array<{ item: { uri: string } | null }>; next: string | null } =
+        await this.request(next);
+      for (const entry of page.items) {
+        if (entry.item?.uri) {
+          uris.push(entry.item.uri);
+        }
+      }
+      next = page.next;
+    }
+    return uris;
+  }
+
+  async addToPlaylist(playlistId: string, uri: string): Promise<string> {
+    const data = await this.request<{ snapshot_id: string }>(
+      `/playlists/${playlistId}/items`,
+      { method: "POST", body: JSON.stringify({ uris: [uri] }) }
+    );
+    return data.snapshot_id;
+  }
+
+  async removeFromPlaylist(playlistId: string, uri: string): Promise<string> {
+    const data = await this.request<{ snapshot_id: string }>(
+      `/playlists/${playlistId}/items`,
+      { method: "DELETE", body: JSON.stringify({ items: [{ uri }] }) }
+    );
+    return data.snapshot_id;
+  }
 }

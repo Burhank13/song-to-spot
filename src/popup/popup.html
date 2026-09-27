@@ -30,6 +30,13 @@
         </button>
       </section>
 
+      <section id="pick-section" class="hidden">
+        <h2>Which song is this?</h2>
+        <p id="pick-detected" class="muted"></p>
+        <ul id="pick-list" class="list"></ul>
+        <button id="dismiss-btn" type="button" class="secondary">None of these</button>
+      </section>
+
       <section id="status-section">
         <h2>Now playing</h2>
         <p id="track-title" class="muted">Looking…</p>
@@ -39,6 +46,11 @@
         </button>
         <p id="shortcut-hint" class="hint"></p>
         <p id="last-result" class="result"></p>
+      </section>
+
+      <section id="history-section" class="hidden">
+        <h2>Recent</h2>
+        <ul id="history-list" class="list history"></ul>
       </section>
 
       <p id="error" class="error hidden"></p>

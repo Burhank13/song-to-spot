@@ -1,9 +1,13 @@
 import type { TrackInfo } from "./track";
+import type { HistoryEntry, PendingPick } from "./storage";
 
 export type Message =
   | { type: "GET_STATUS" }
   | { type: "GET_NOW_PLAYING" }
   | { type: "SAVE_NOW_PLAYING" }
+  | { type: "PICK_MATCH"; uri: string }
+  | { type: "DISMISS_PENDING" }
+  | { type: "UNDO"; entryId: string }
   | { type: "AUTH_SPOTIFY" }
   | { type: "DISCONNECT_SPOTIFY" }
   | { type: "SET_PLAYLIST"; playlistId: string; playlistName: string }
@@ -29,6 +33,8 @@ export interface StatusResponse {
   playlistName: string | null;
   lastTrack: TrackInfo | null;
   lastResult: string | null;
+  pending: PendingPick | null;
+  history: HistoryEntry[];
 }
 
 export interface PlaylistsResponse {

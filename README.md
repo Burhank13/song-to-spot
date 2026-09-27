@@ -7,7 +7,9 @@ Chrome extension that saves the song playing in any browser tab to a Spotify pla
 1. Press **Alt+Shift+S** (or click **Add to playlist** in the popup).
 2. The extension finds the tab that is making sound (preferring the active tab) and reads its track info from the [Media Session API](https://developer.mozilla.org/en-US/docs/Web/API/Media_Session_API), falling back to the page title.
 3. The title is cleaned up (strips "(Official Video)", "[Lyrics]", "ft. X", "- Topic", "VEVO", and splits "Artist - Song" on YouTube).
-4. It searches Spotify and adds the best match to your chosen playlist, then shows a notification with the result.
+4. It searches Spotify and scores the results on title and artist, ranking karaoke, cover, remix, sped-up and similar versions lower unless that is what was playing.
+5. If the best match is clear, it is added to your playlist (unless it is already there). If not, nothing is added: the icon shows **?** and the popup lets you pick from the top 3.
+6. The popup lists your last 20 songs, with **Undo** for anything that was added.
 
 Nothing runs in the background between shortcut presses.
 
@@ -74,7 +76,7 @@ npm test
 - The Spotify app owner needs **Spotify Premium**, and apps in Development Mode are limited to 5 allowlisted users.
 - The extension skips `open.spotify.com` to avoid adding songs that are already playing in Spotify's web player.
 - Sites that expose rich metadata via Media Session (YouTube, Bandcamp, many streaming sites) work best.
-- Sites with generic page titles may produce weaker matches; check the popup to see what will be searched before saving.
+- Sites with generic page titles, or no artist, always ask you to pick the right song.
 
 ## Permissions
 

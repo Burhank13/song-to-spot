@@ -1,3 +1,5 @@
+import type { HistoryEntry, PendingPick } from "../shared/storage";
+import type { Candidate } from "../spotify/match";
 import type {
   BackgroundResponse,
   Message,
@@ -76,14 +78,118 @@ async function loadPlaylists(selectedId: string | null): Promise<void> {
   }
 }
 
-async function refreshStatus(): Promise<void> {
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string
+): HTMLElementTagNameMap[K] {
+  const element = document.createElement(tag);
+  if (className) {
+    element.className = className;
+  }
+  if (text !== undefined) {
+    element.textContent = text;
+  }
+  return element;
+}
+
+function songRow(
+  name: string,
+  sub: string,
+  imageUrl: string | null,
+  action?: HTMLElement
+): HTMLLIElement {
+  const row = el("li");
+  if (imageUrl) {
+    const img = el("img");
+    img.src = imageUrl;
+    img.alt = "";
+    img.addEventListener("error", () => img.replaceWith(el("div", "no-art")));
+    row.appendChild(img);
+  } else {
+    row.appendChild(el("div", "no-art"));
+  }
+  const info = el("div", "info");
+  info.append(el("p", "name", name), el("p", "sub", sub));
+  row.appendChild(info);
+  if (action) {
+    row.appendChild(action);
+  }
+  return row;
+}
+
+async function runAction(message: Message): Promise<void> {
   showError("");
+  const response = await sendMessage<BackgroundResponse>(message);
+  if (isErrorResponse(response)) {
+    showError(response.error);
+  }
+  await refreshStatus();
+}
+
+function renderPick(pending: PendingPick | null): void {
+  $("pick-section").classList.toggle("hidden", !pending);
+  const list = $("pick-list");
+  list.replaceChildren();
+  if (!pending) {
+    return;
+  }
+
+  const { title, artist } = pending.track;
+  $("pick-detected").textContent = `Heard: ${title}${artist ? ` — ${artist}` : ""}`;
+  pending.candidates.forEach((candidate: Candidate) => {
+    const button = el("button", "", "Add");
+    button.type = "button";
+    button.addEventListener("click", () => {
+      button.disabled = true;
+      void runAction({ type: "PICK_MATCH", uri: candidate.uri });
+    });
+    const sub = [candidate.artists.join(", "), candidate.album].filter(Boolean).join(" · ");
+    list.appendChild(songRow(candidate.name, sub, candidate.imageUrl, button));
+  });
+}
+
+const HISTORY_LABELS: Record<HistoryEntry["status"], string> = {
+  added: "Added",
+  already_in_playlist: "Already there",
+  not_found: "Not found",
+  removed: "Removed",
+};
+
+function renderHistory(history: HistoryEntry[]): void {
+  $("history-section").classList.toggle("hidden", history.length === 0);
+  const list = $("history-list");
+  list.replaceChildren();
+
+  for (const entry of history) {
+    const name = entry.match?.name ?? entry.detected.title;
+    const sub = entry.match?.artists.join(", ") ?? (entry.detected.artist || "Unknown artist");
+    let action: HTMLElement;
+    if (entry.status === "added") {
+      action = el("button", "secondary", "Undo");
+      (action as HTMLButtonElement).type = "button";
+      action.addEventListener("click", () => {
+        (action as HTMLButtonElement).disabled = true;
+        void runAction({ type: "UNDO", entryId: entry.id });
+      });
+    } else {
+      action = el("span", "tag", HISTORY_LABELS[entry.status]);
+    }
+    list.appendChild(songRow(name, sub, entry.match?.imageUrl ?? null, action));
+  }
+}
+
+// Doesn't clear the error line: callers clear it before acting, and an
+// error shown by an action must survive the refresh that follows it.
+async function refreshStatus(): Promise<void> {
   status = await sendMessage<StatusResponse>({ type: "GET_STATUS" });
 
   $("connect-btn").classList.toggle("hidden", status.connected);
   $("disconnect-btn").classList.toggle("hidden", !status.connected);
   $("playlist-section").classList.toggle("hidden", !status.connected);
   $("last-result").textContent = status.lastResult ?? "";
+  renderPick(status.pending);
+  renderHistory(status.history);
   updateSaveButton();
 
   // The playlist list only changes on connect or an explicit refresh, so
@@ -161,19 +267,17 @@ async function init(): Promise<void> {
     await refreshStatus();
   });
 
-  $("save-btn").addEventListener("click", async () => {
-    showError("");
-    const saveBtn = $<HTMLButtonElement>("save-btn");
-    saveBtn.disabled = true;
-    const response = await sendMessage<BackgroundResponse>({ type: "SAVE_NOW_PLAYING" });
-    if (isErrorResponse(response)) {
-      showError(response.error);
-    }
-    await refreshStatus();
+  $("save-btn").addEventListener("click", () => {
+    $<HTMLButtonElement>("save-btn").disabled = true;
+    void runAction({ type: "SAVE_NOW_PLAYING" });
+  });
+
+  $("dismiss-btn").addEventListener("click", () => {
+    void runAction({ type: "DISMISS_PENDING" });
   });
 
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes.lastResult || changes.spotifyTokens) {
+    if (changes.lastResult || changes.spotifyTokens || changes.pending || changes.history) {
       void refreshStatus();
     }
   });

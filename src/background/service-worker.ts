@@ -1,9 +1,15 @@
-import type { Message, StatusResponse } from "../shared/messages";
+import type { BackgroundResponse, Message, StatusResponse } from "../shared/messages";
 import { getStoredState, saveSettings, saveTokens } from "../shared/storage";
 import { authenticateSpotify, getOAuthRedirectUriForSetup } from "../spotify/auth";
-import { fetchUserPlaylists } from "../spotify/client";
+import { SpotifyApi } from "../spotify/client";
 import { findNowPlaying } from "./now-playing";
-import { saveNowPlaying } from "./pipeline";
+import {
+  dismissPending,
+  pickMatch,
+  saveNowPlaying,
+  undoHistoryEntry,
+  type SaveResult,
+} from "./pipeline";
 
 const SAVE_COMMAND = "save-now-playing";
 
@@ -15,13 +21,29 @@ async function getStatus(): Promise<StatusResponse> {
     playlistName: state.settings.playlistName,
     lastTrack: state.lastTrack,
     lastResult: state.lastResult,
+    pending: state.pending,
+    history: state.history,
   };
+}
+
+function toResponse(result: SaveResult): BackgroundResponse {
+  return result.outcome === "failed"
+    ? { ok: false, error: result.message }
+    : { ok: true, message: result.message };
 }
 
 chrome.commands.onCommand.addListener((command) => {
   if (command === SAVE_COMMAND) {
     void saveNowPlaying({ notify: true });
   }
+});
+
+// Clicking a notification (e.g. "Which song is this?") opens the popup.
+chrome.notifications.onClicked.addListener((notificationId) => {
+  chrome.notifications.clear(notificationId);
+  chrome.action.openPopup().catch(() => {
+    // Not allowed when no browser window is focused; the badge still shows.
+  });
 });
 
 chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
@@ -41,12 +63,20 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
           return;
         }
         case "SAVE_NOW_PLAYING": {
-          const result = await saveNowPlaying({ notify: false });
-          sendResponse(
-            result.ok
-              ? { ok: true, message: result.message }
-              : { ok: false, error: result.message }
-          );
+          sendResponse(toResponse(await saveNowPlaying({ notify: false })));
+          return;
+        }
+        case "PICK_MATCH": {
+          sendResponse(toResponse(await pickMatch(message.uri)));
+          return;
+        }
+        case "DISMISS_PENDING": {
+          await dismissPending();
+          sendResponse({ ok: true });
+          return;
+        }
+        case "UNDO": {
+          sendResponse(toResponse(await undoHistoryEntry(message.entryId)));
           return;
         }
         case "AUTH_SPOTIFY": {
@@ -76,8 +106,11 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
             sendResponse({ ok: false, error: "Connect Spotify first." });
             return;
           }
-          const { playlists, tokens } = await fetchUserPlaylists(state.spotifyTokens);
-          await saveTokens(tokens);
+          const api = new SpotifyApi(state.spotifyTokens);
+          const playlists = await api.playlists();
+          if (api.tokens !== state.spotifyTokens) {
+            await saveTokens(api.tokens);
+          }
           sendResponse({ playlists });
           return;
         }
