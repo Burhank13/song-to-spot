@@ -15,10 +15,12 @@
 
       <section id="auth-section">
         <button id="connect-btn" type="button">Connect Spotify</button>
-        <button id="disconnect-btn" type="button" class="secondary hidden">
-          Disconnect
-        </button>
       </section>
+
+      <p id="playlist-summary" class="summary hidden">
+        Saving to <strong id="playlist-name"></strong> ·
+        <a id="change-playlist" href="#">Change</a>
+      </p>
 
       <section id="playlist-section" class="hidden">
         <label for="playlist-select">Target playlist</label>
@@ -46,6 +48,7 @@
         </button>
         <p id="shortcut-hint" class="hint"></p>
         <p id="last-result" class="result"></p>
+        <p id="error" class="error hidden"></p>
       </section>
 
       <section id="history-section" class="hidden">
@@ -53,7 +56,9 @@
         <ul id="history-list" class="list history"></ul>
       </section>
 
-      <p id="error" class="error hidden"></p>
+      <p id="footer" class="footer hidden">
+        <a id="disconnect-link" href="#">Disconnect Spotify</a>
+      </p>
     </main>
     <script type="module" src="./popup.ts"></script>
   </body>

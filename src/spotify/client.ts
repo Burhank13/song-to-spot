@@ -1,8 +1,13 @@
 import type { SpotifyTokens } from "../shared/storage";
 import { getValidAccessToken } from "./auth";
 import type { Candidate } from "./match";
+import { NETWORK_ERROR_MESSAGE, SpotifyError, parseRetryAfter, spotifyError } from "./errors";
 
 const API_BASE = "https://api.spotify.com/v1";
+// Longer rate-limit waits are reported to the user instead of slept through.
+const MAX_RETRY_WAIT_SECONDS = 5;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface SpotifyPlaylist {
   id: string;
@@ -37,28 +42,52 @@ export class SpotifyApi {
   private async request<T>(pathOrUrl: string, init: RequestInit = {}): Promise<T> {
     const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API_BASE}${pathOrUrl}`;
 
+    const path = url.slice(API_BASE.length).split("?")[0];
+    const method = init.method ?? "GET";
+
     const send = async () => {
       const { accessToken, tokens } = await getValidAccessToken(this.tokens);
       this.tokens = tokens;
-      return fetch(url, {
-        ...init,
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-          ...init.headers,
-        },
-      });
+      try {
+        return await fetch(url, {
+          ...init,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            ...init.headers,
+          },
+        });
+      } catch {
+        throw new SpotifyError(NETWORK_ERROR_MESSAGE, 0);
+      }
     };
 
     let response = await send();
+
+    // One retry each for: an access token Spotify rejected early, a short
+    // rate limit, and a server error on a read. Writes aren't retried after
+    // a server error so a song can't be added twice.
     if (response.status === 401) {
       this.tokens = { ...this.tokens, expiresAt: 0 };
+      response = await send();
+    } else if (response.status === 429) {
+      const wait = parseRetryAfter(response.headers.get("Retry-After")) ?? 1;
+      if (wait <= MAX_RETRY_WAIT_SECONDS) {
+        await sleep(wait * 1000);
+        response = await send();
+      }
+    } else if (response.status >= 500 && method === "GET") {
+      await sleep(1000);
       response = await send();
     }
 
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Spotify API error (${response.status}): ${text}`);
+      console.warn("Spotify API error:", method, path, response.status, await response.text());
+      throw spotifyError(
+        response.status,
+        path,
+        parseRetryAfter(response.headers.get("Retry-After"))
+      );
     }
 
     return (response.status === 204 ? null : await response.json()) as T;

@@ -1,3 +1,10 @@
+import {
+  NETWORK_ERROR_MESSAGE,
+  SpotifyError,
+  loginExpiredError,
+  spotifyError,
+} from "./errors";
+
 const SPOTIFY_SCOPES = [
   "playlist-modify-private",
   "playlist-modify-public",
@@ -87,15 +94,23 @@ async function refreshAccessToken(
     client_id: CLIENT_ID,
   });
 
-  const response = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+  } catch {
+    throw new SpotifyError(NETWORK_ERROR_MESSAGE, 0);
+  }
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Token refresh failed: ${text}`);
+    console.warn("Spotify token refresh failed:", response.status, await response.text());
+    // 400 invalid_grant: the refresh token was revoked or has expired.
+    throw response.status === 400 || response.status === 401
+      ? loginExpiredError(response.status)
+      : spotifyError(response.status, "/token");
   }
 
   return response.json();

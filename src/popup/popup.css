@@ -115,7 +115,7 @@ select {
 }
 
 .error {
-  margin: 0;
+  margin: 8px 0 0;
   color: #ff6b6b;
   font-size: 13px;
 }
@@ -185,5 +185,30 @@ select {
 .tag {
   flex: none;
   font-size: 11px;
+  color: #b3b3b3;
+}
+
+.summary {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #b3b3b3;
+}
+
+.summary strong {
+  color: #fff;
+}
+
+.summary a,
+.footer a {
+  color: #fff;
+}
+
+.footer {
+  margin: 16px 0 0;
+  font-size: 12px;
+  text-align: center;
+}
+
+.footer a {
   color: #b3b3b3;
 }

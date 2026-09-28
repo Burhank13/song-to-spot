@@ -9,12 +9,11 @@ import {
   saveLastAction,
   savePending,
   savePlaylistCache,
-  saveTokens,
   updateHistoryStatus,
   type PlaylistCache,
-  type SpotifyTokens,
 } from "../shared/storage";
-import { SpotifyApi } from "../spotify/client";
+import type { SpotifyApi } from "../spotify/client";
+import { withSpotify } from "./spotify-session";
 import { isConfident, rankCandidates, type Candidate } from "../spotify/match";
 
 const PICKER_SIZE = 3;
@@ -45,21 +44,6 @@ function failed(message: string): SaveResult {
 
 function describe(match: Pick<Candidate, "name" | "artists">): string {
   return `"${match.name}" by ${match.artists.join(", ")}`;
-}
-
-// Runs Spotify calls and persists tokens if they were refreshed on the way.
-async function withSpotify<T>(
-  tokens: SpotifyTokens,
-  run: (api: SpotifyApi) => Promise<T>
-): Promise<T> {
-  const api = new SpotifyApi(tokens);
-  try {
-    return await run(api);
-  } finally {
-    if (api.tokens !== tokens) {
-      await saveTokens(api.tokens);
-    }
-  }
 }
 
 async function setPendingBadge(pending: boolean): Promise<void> {

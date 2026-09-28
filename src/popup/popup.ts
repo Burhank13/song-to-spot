@@ -48,6 +48,7 @@ function isErrorResponse(
 let status: StatusResponse | null = null;
 let hasNowPlaying = false;
 let playlistsLoaded = false;
+let editingPlaylist = false;
 
 function updateSaveButton(): void {
   const saveBtn = $<HTMLButtonElement>("save-btn");
@@ -184,21 +185,27 @@ function renderHistory(history: HistoryEntry[]): void {
 async function refreshStatus(): Promise<void> {
   status = await sendMessage<StatusResponse>({ type: "GET_STATUS" });
 
-  $("connect-btn").classList.toggle("hidden", status.connected);
-  $("disconnect-btn").classList.toggle("hidden", !status.connected);
-  $("playlist-section").classList.toggle("hidden", !status.connected);
+  const { connected, playlistId } = status;
+  const showPicker = connected && (!playlistId || editingPlaylist);
+
+  $("connect-btn").classList.toggle("hidden", connected);
+  $("footer").classList.toggle("hidden", !connected);
+  $("playlist-section").classList.toggle("hidden", !showPicker);
+  $("playlist-summary").classList.toggle("hidden", !connected || showPicker);
+  $("playlist-name").textContent = status.playlistName ?? "";
   $("last-result").textContent = status.lastResult ?? "";
   renderPick(status.pending);
   renderHistory(status.history);
   updateSaveButton();
 
-  // The playlist list only changes on connect or an explicit refresh, so
-  // don't refetch it on every storage change (e.g. after each save).
-  if (status.connected && !playlistsLoaded) {
+  // Only fetch playlists when the picker is on screen, and only once: the
+  // list changes on connect or an explicit refresh, not after each save.
+  if (showPicker && !playlistsLoaded) {
     playlistsLoaded = true;
-    await loadPlaylists(status.playlistId);
-  } else if (!status.connected) {
+    await loadPlaylists(playlistId);
+  } else if (!connected) {
     playlistsLoaded = false;
+    editingPlaylist = false;
   }
 }
 
@@ -244,9 +251,16 @@ async function init(): Promise<void> {
     await refreshStatus();
   });
 
-  $("disconnect-btn").addEventListener("click", async () => {
+  $("disconnect-link").addEventListener("click", async (event) => {
+    event.preventDefault();
     await sendMessage({ type: "DISCONNECT_SPOTIFY" });
     await refreshStatus();
+  });
+
+  $("change-playlist").addEventListener("click", (event) => {
+    event.preventDefault();
+    editingPlaylist = true;
+    void refreshStatus();
   });
 
   $("refresh-playlists-btn").addEventListener("click", async () => {
@@ -264,6 +278,7 @@ async function init(): Promise<void> {
       playlistId: option.value,
       playlistName: option.textContent ?? "",
     });
+    editingPlaylist = false;
     await refreshStatus();
   });
 
@@ -277,7 +292,13 @@ async function init(): Promise<void> {
   });
 
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes.lastResult || changes.spotifyTokens || changes.pending || changes.history) {
+    if (
+      changes.lastResult ||
+      changes.spotifyTokens ||
+      changes.settings ||
+      changes.pending ||
+      changes.history
+    ) {
       void refreshStatus();
     }
   });

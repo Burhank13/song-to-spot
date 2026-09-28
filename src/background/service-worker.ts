@@ -1,8 +1,8 @@
 import type { BackgroundResponse, Message, StatusResponse } from "../shared/messages";
 import { getStoredState, saveSettings, saveTokens } from "../shared/storage";
 import { authenticateSpotify, getOAuthRedirectUriForSetup } from "../spotify/auth";
-import { SpotifyApi } from "../spotify/client";
 import { findNowPlaying } from "./now-playing";
+import { withSpotify } from "./spotify-session";
 import {
   dismissPending,
   pickMatch,
@@ -106,11 +106,7 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
             sendResponse({ ok: false, error: "Connect Spotify first." });
             return;
           }
-          const api = new SpotifyApi(state.spotifyTokens);
-          const playlists = await api.playlists();
-          if (api.tokens !== state.spotifyTokens) {
-            await saveTokens(api.tokens);
-          }
+          const playlists = await withSpotify(state.spotifyTokens, (api) => api.playlists());
           sendResponse({ playlists });
           return;
         }

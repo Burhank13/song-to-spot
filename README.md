@@ -51,11 +51,24 @@ For development with hot reload:
 npm run dev
 ```
 
-Run the tests:
+### Tests
+
+Unit tests (title cleanup, match scoring, error messages):
 
 ```bash
 npm test
 ```
+
+End-to-end tests load the built extension into Chromium, play audio on local test pages, and run every flow against a fake Spotify API (no account needed):
+
+```bash
+npx playwright install chromium   # once
+npm run test:e2e
+```
+
+Branded Chrome 137+ ignores `--load-extension`, so the tests need Playwright's Chromium or a [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/) build via `CHROME_PATH`. A muted window opens off-screen while they run. Screenshots of the popup are saved to `tests/e2e/screenshots/`.
+
+Regenerate the icons with `npm run icons`.
 
 ### 5. Register the redirect URI
 
@@ -70,6 +83,16 @@ npm test
 2. **Connect Spotify** and approve access.
 3. Choose a **target playlist**.
 4. Play music on any site and press **Alt+Shift+S**. Change the shortcut at `chrome://extensions/shortcuts`.
+
+## Troubleshooting
+
+| Message | Fix |
+| --- | --- |
+| Invalid redirect URI (during connect) | Add the exact redirect URI from step 5 to your Spotify app, including the trailing slash |
+| Spotify refused the request … Premium … User Management | The Spotify app owner needs Premium, and your account must be listed under **User Management** in the dashboard |
+| Your Spotify login expired or was revoked | Click **Connect Spotify** again |
+| Couldn't read the tab that's playing | Reload that tab (tabs opened before the extension was installed or reloaded can't be read) |
+| An ad is playing | Wait for the YouTube ad to finish |
 
 ## Notes
 
